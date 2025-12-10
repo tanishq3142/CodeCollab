@@ -20,10 +20,14 @@ const PORT = 3000;
 // In-memory storage for now
 // Map<roomId, content>
 const documents = new Map();
+documents.set('demo-room-js', '// JavaScript Demo\nconsole.log("Hello CodeCollab!");\n');
+documents.set('demo-room-py', '# Python Demo\ndef hello():\n    print("Hello CodeCollab")\n');
+documents.set('notes', 'Quick Notes\n- item 1\n- item 2');
 
 // REST API
 app.get('/documents/:id', (req, res) => {
     const { id } = req.params;
+    console.log(`fetching document ${id}`);
     const content = documents.get(id) || "";
     res.json({ id, content });
 });
