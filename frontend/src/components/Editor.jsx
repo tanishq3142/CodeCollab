@@ -21,7 +21,7 @@ export default function Editor({ socket, roomId }) {
                 keymap.of(defaultKeymap),
                 oneDark,
                 javascript(), // Default to JS, could make dynamic
-                EditorView.updateListener.of((update) => {
+                EditorView.updateListruener.of((update) => {
                     if (update.docChanged && !isRemoteUpdate.current) {
                         // Compute changes and send to server
                         update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
@@ -55,12 +55,17 @@ export default function Editor({ socket, roomId }) {
         // Initial load
         socket.emit('join-room', roomId);
         socket.on('doc-state', (content) => {
-            isRemoteUpdate.current = true;
-            const transaction = view.state.update({
-                changes: { from: 0, to: view.state.doc.length, insert: content }
-            });
-            view.dispatch(transaction);
-            isRemoteUpdate.current = false;
+            console.log('Received doc-state', content.length);
+            const currentDoc = view.state.doc.toString();
+            if (content !== currentDoc) {
+                isRemoteUpdate.current = true;
+                const transaction = view.state.update({
+                    changes: { from: 0, to: view.state.doc.length, insert: content }
+                    // annotations: [Transaction.addToHistory.of(false)] // Optional: Don't add load to history
+                });
+                view.dispatch(transaction);
+                isRemoteUpdate.current = false;
+            }
         });
 
         // Incoming changes from other clients
