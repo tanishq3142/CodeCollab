@@ -1,20 +1,24 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import Editor from '../components/Editor';
+import FileExplorer from '../components/FileExplorer';
 
 export default function EditorPage() {
     const { roomId } = useParams();
     const navigate = useNavigate();
     const [socket, setSocket] = useState(null);
     const [connected, setConnected] = useState(false);
+    const [files, setFiles] = useState([]);
+    const [activeFileName, setActiveFileName] = useState(null);
+    const fileContents = useRef({}); // Store content in ref to avoid re-renders on typing
 
     // Initialize Socket.IO
     useEffect(() => {
         const url = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
         console.log("Connecting to socket at:", url);
         const s = io(url, {
-            reconnectionAttempts: 3 // Don't try forever if no backend
+            reconnectionAttempts: 3
         });
 
         setSocket(s);
@@ -22,6 +26,7 @@ export default function EditorPage() {
         s.on('connect', () => {
             console.log("Connected to socket server");
             setConnected(true);
+            s.emit('join-room', roomId);
         });
 
         s.on('disconnect', () => {
@@ -29,22 +34,62 @@ export default function EditorPage() {
             setConnected(false);
         });
 
-        // For demo purposes if backend isn't running, we still render the editor
-        // but the 'connected' state might remain false.
+        s.on('project-data', (filesData) => {
+            console.log("Received project data:", filesData);
+            setFiles(filesData);
+            // Initialize content map
+            filesData.forEach(f => {
+                fileContents.current[f.name] = f.content;
+            });
+
+            if (filesData.length > 0 && !activeFileName) {
+                setActiveFileName(filesData[0].name);
+            }
+        });
+
+        s.on('file-created', (newFile) => {
+            setFiles(prev => [...prev, newFile]);
+            fileContents.current[newFile.name] = newFile.content;
+        });
+
+        s.on('server-op', ({ fileName, op }) => {
+            // Also update our local ref if we get an external update
+            // Note: This is a simplification. For perfect sync, we'd need to apply the op string-wise.
+            // But since 'Editor' handles the live view, we mainly care about switching files.
+            // If we switch to a file that had remote updates, we want the latest.
+            // Ideally, we should apply the op to fileContents.current[fileName].
+            // Implementing basic op application here:
+            const currentContent = fileContents.current[fileName] || "";
+            const prefix = currentContent.slice(0, op.from);
+            const suffix = currentContent.slice(op.to);
+            fileContents.current[fileName] = prefix + op.insert + suffix;
+        });
 
         return () => {
             s.disconnect();
         };
-    }, []);
+    }, [roomId]);
+
+    const handleFileCreate = (fileName) => {
+        if (socket) {
+            socket.emit('create-file', { roomId, fileName, language: 'javascript' });
+        }
+    };
+
+    const handleContentUpdate = (fileName, newContent) => {
+        fileContents.current[fileName] = newContent;
+    };
+
+    const activeFile = files.find(f => f.name === activeFileName);
 
     if (!socket) return <div className="container">Initializing...</div>;
 
     return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <header className="header" style={{ marginBottom: 0, padding: '0.5rem 1rem' }}>
+            <header className="header" style={{ marginBottom: 0, padding: '0.5rem 1rem', borderBottom: '1px solid #333' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <button onClick={() => navigate('/dashboard')}>&larr; Back</button>
-                    <h3>Room: {roomId}</h3>
+                    <h3>Project: {roomId}</h3>
                 </div>
                 <div>
                     <span style={{
@@ -55,12 +100,43 @@ export default function EditorPage() {
                         backgroundColor: connected ? '#4caf50' : '#f44336',
                         marginRight: '0.5rem'
                     }}></span>
-                    {connected ? 'Connected' : 'Disconnected (Backend Offline?)'}
+                    {connected ? 'Connected' : 'Disconnected'}
                 </div>
             </header>
 
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-                <Editor socket={socket} roomId={roomId} />
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                <FileExplorer
+                    files={files}
+                    activeFile={activeFileName}
+                    onFileSelect={setActiveFileName}
+                    onFileCreate={handleFileCreate}
+                />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {activeFileName && (
+                        <div style={{
+                            padding: '5px 10px',
+                            backgroundColor: '#1e1e1e',
+                            color: '#ccc',
+                            fontSize: '0.9rem',
+                            borderBottom: '1px solid #333'
+                        }}>
+                            {activeFileName}
+                        </div>
+                    )}
+                    <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                        {activeFileName ? (
+                            <Editor
+                                socket={socket}
+                                roomId={roomId}
+                                fileName={activeFileName}
+                                initialContent={fileContents.current[activeFileName] || ''}
+                                onContentChange={handleContentUpdate}
+                            />
+                        ) : (
+                            <div style={{ padding: '20px', color: '#666' }}>Select a file to start editing</div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );

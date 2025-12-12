@@ -2,7 +2,11 @@ import mongoose from 'mongoose';
 
 const documentSchema = new mongoose.Schema({
     _id: String,
-    content: String,
+    files: [{
+        name: String,
+        content: String,
+        language: String
+    }],
     name: String
 });
 

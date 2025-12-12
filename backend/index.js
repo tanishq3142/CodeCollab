@@ -57,37 +57,55 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         console.log(`User ${socket.id} joined room ${roomId}`);
 
-        // Send current state to the new user
-        const doc = await Document.findById(roomId);
-        const content = doc ? doc.content : "";
-        socket.emit('doc-state', content);
+        // Send current project state (files) to the new user
+        let doc = await Document.findById(roomId);
+        if (!doc) {
+            // Initialize default project if not exists
+            doc = await Document.create({
+                _id: roomId,
+                name: "Untitled Project",
+                files: [{ name: "main.js", content: "// Start coding...", language: "javascript" }]
+            });
+        }
+        socket.emit('project-data', doc.files);
     });
 
-    socket.on('client-op', async ({ roomId, op }) => {
-        // op: { from, to, insert }
-
+    socket.on('create-file', async ({ roomId, fileName, language }) => {
         try {
             const doc = await Document.findById(roomId);
-            const currentContent = doc ? doc.content : "";
+            if (doc) {
+                const newFile = { name: fileName, content: "", language: language || 'plaintext' };
+                doc.files.push(newFile);
+                await doc.save();
+                // Broadcast to all clients in room (including sender) to update list
+                io.in(roomId).emit('file-created', newFile);
+            }
+        } catch (e) {
+            console.error("Error creating file:", e);
+        }
+    });
+
+    socket.on('client-op', async ({ roomId, fileName, op }) => {
+        // op: { from, to, insert }
+        try {
+            const doc = await Document.findById(roomId);
+            if (!doc) return;
+
+            const file = doc.files.find(f => f.name === fileName);
+            if (!file) return;
+
+            const currentContent = file.content || "";
 
             // Apply string splice
             const prefix = currentContent.slice(0, op.from);
             const suffix = currentContent.slice(op.to);
             const newContent = prefix + op.insert + suffix;
 
-            if (doc) {
-                doc.content = newContent;
-                await doc.save();
-            } else {
-                // If it doesn't exist yet but we have an op, create it
-                // Logic debate: strictly we should probably require create first, 
-                // but for this simple app, upsert is fine or just ignore.
-                // We'll create it if missing for robustness
-                await Document.create({ _id: roomId, content: newContent });
-            }
+            file.content = newContent;
+            await doc.save();
 
             // Broadcast to other clients in the room
-            socket.to(roomId).emit('server-op', op);
+            socket.to(roomId).emit('server-op', { fileName, op });
         } catch (e) {
             console.error("Error applying op:", e);
         }
