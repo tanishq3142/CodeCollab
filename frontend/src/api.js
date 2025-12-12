@@ -1,7 +1,7 @@
 // Basic mock API wrapper for demonstration since backend might not be running
 // In a real scenario, this would fetch from import.meta.env.VITE_API_URL
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
 export async function getDocument(roomId) {
     try {

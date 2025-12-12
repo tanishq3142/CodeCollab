@@ -11,7 +11,9 @@ export default function EditorPage() {
 
     // Initialize Socket.IO
     useEffect(() => {
-        const s = io(import.meta.env.VITE_API_URL || 'http://localhost:3000', {
+        const url = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+        console.log("Connecting to socket at:", url);
+        const s = io(url, {
             reconnectionAttempts: 3 // Don't try forever if no backend
         });
 
