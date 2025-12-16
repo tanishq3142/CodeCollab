@@ -86,7 +86,7 @@ export default function EditorPage() {
 
     return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <header className="header" style={{ marginBottom: 0, padding: '0.5rem 1rem', borderBottom: '1px solid #333' }}>
+            <header className="header" style={{ marginBottom: 0, padding: '0.5rem 1rem', borderRadius: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <button onClick={() => navigate('/dashboard')}>&larr; Back</button>
                     <h3>Project: {roomId}</h3>
@@ -111,19 +111,19 @@ export default function EditorPage() {
                     onFileSelect={setActiveFileName}
                     onFileCreate={handleFileCreate}
                 />
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backdropFilter: 'blur(5px)' }}>
                     {activeFileName && (
                         <div style={{
                             padding: '5px 10px',
-                            backgroundColor: '#1e1e1e',
+                            backgroundColor: 'rgba(30, 30, 30, 0.4)',
                             color: '#ccc',
                             fontSize: '0.9rem',
-                            borderBottom: '1px solid #333'
+                            borderBottom: '1px solid rgba(51, 51, 51, 0.5)'
                         }}>
                             {activeFileName}
                         </div>
                     )}
-                    <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                    <div className="editor-container" style={{ flex: 1, overflow: 'hidden', position: 'relative', height: 'auto', borderRadius: 0, border: 'none' }}>
                         {activeFileName ? (
                             <Editor
                                 socket={socket}
