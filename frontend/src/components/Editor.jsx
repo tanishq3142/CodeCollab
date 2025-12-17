@@ -4,6 +4,7 @@ import { EditorState, Annotation } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { defaultKeymap } from '@codemirror/commands';
 import { javascript } from '@codemirror/lang-javascript';
+import { cpp } from '@codemirror/lang-cpp';
 import { oneDark } from '@codemirror/theme-one-dark';
 
 const SyncAnnotation = Annotation.define();
@@ -23,7 +24,7 @@ export default function Editor({ socket, roomId, fileName, initialContent, onCon
                 basicSetup,
                 keymap.of(defaultKeymap),
                 oneDark,
-                javascript(), // Dynamic language loading could go here
+                fileName.endsWith('.cpp') ? cpp() : javascript(),
                 EditorView.updateListener.of((update) => {
                     const isRemote = update.transactions.some(tr => tr.annotation(SyncAnnotation));
 

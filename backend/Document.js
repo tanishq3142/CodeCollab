@@ -7,6 +7,8 @@ const documentSchema = new mongoose.Schema({
         content: String,
         language: String
     }],
+    users: [{ type: String }], // Active users (optional persistence)
+    owner: String,
     name: String
 });
 

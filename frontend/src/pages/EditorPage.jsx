@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import Editor from '../components/Editor';
 import FileExplorer from '../components/FileExplorer';
+import Terminal from '../components/Terminal';
 
 export default function EditorPage() {
     const { roomId } = useParams();
@@ -11,6 +12,9 @@ export default function EditorPage() {
     const [connected, setConnected] = useState(false);
     const [files, setFiles] = useState([]);
     const [activeFileName, setActiveFileName] = useState(null);
+    const [showTerminal, setShowTerminal] = useState(false);
+    const [terminalOutput, setTerminalOutput] = useState('');
+    const [isRunning, setIsRunning] = useState(false);
     const fileContents = useRef({}); // Store content in ref to avoid re-renders on typing
 
     // Initialize Socket.IO
@@ -80,6 +84,34 @@ export default function EditorPage() {
         fileContents.current[fileName] = newContent;
     };
 
+    const runCode = async () => {
+        if (!activeFileName) return;
+        const code = fileContents.current[activeFileName] || '';
+        // Determine language basic
+        const language = activeFileName.endsWith('.py') ? 'python' : (activeFileName.endsWith('.cpp') ? 'cpp' : 'javascript');
+
+        setShowTerminal(true);
+        setTerminalOutput("Running...");
+        setIsRunning(true);
+
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+
+        try {
+            const res = await fetch(`${apiUrl}/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, language })
+            });
+            const data = await res.json();
+            setTerminalOutput(data.output);
+        } catch (err) {
+            console.error(err);
+            setTerminalOutput("Error connecting to execution server.");
+        } finally {
+            setIsRunning(false);
+        }
+    };
+
     const activeFile = files.find(f => f.name === activeFileName);
 
     if (!socket) return <div className="container">Initializing...</div>;
@@ -90,6 +122,14 @@ export default function EditorPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <button onClick={() => navigate('/dashboard')}>&larr; Back</button>
                     <h3>Project: {roomId}</h3>
+                    <button
+                        onClick={runCode}
+                        disabled={isRunning}
+                        className="primary"
+                        style={{ marginLeft: '1rem', padding: '0.4rem 1rem', fontSize: '0.9rem' }}
+                    >
+                        {isRunning ? 'Running...' : 'Run Code'}
+                    </button>
                 </div>
                 <div>
                     <span style={{
@@ -138,6 +178,12 @@ export default function EditorPage() {
                     </div>
                 </div>
             </div>
+            {showTerminal && (
+                <Terminal
+                    output={terminalOutput}
+                    onClose={() => setShowTerminal(false)}
+                />
+            )}
         </div>
     );
 }

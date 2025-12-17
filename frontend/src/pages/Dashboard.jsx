@@ -1,25 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
-import { createDocument } from '../api';
+import { createDocument, getDocuments } from '../api';
 
 export default function Dashboard() {
     const navigate = useNavigate();
     const [rooms, setRooms] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [newRoomName, setNewRoomName] = useState('');
+    const [joinCode, setJoinCode] = useState('');
     const username = localStorage.getItem('username'); // Assuming username is stored in localStorage
 
     useEffect(() => {
         if (!username) {
             navigate('/');
         } else {
-            // Mock existing rooms
-            setRooms([
-                { id: 'demo-room-js', name: 'JavaScript Demo' },
-                { id: 'demo-room-py', name: 'Python Algorithm' },
-                { id: 'notes', name: 'Quick Notes' }
-            ]);
+            // Fetch real rooms
+            getDocuments().then(data => {
+                setRooms(data);
+            });
         }
     }, [username, navigate]);
 
@@ -30,15 +28,23 @@ export default function Dashboard() {
         setNewRoomName('');
     };
 
-    const confirmCreateRoom = (e) => {
+    const confirmCreateRoom = async (e) => {
         e.preventDefault();
         if (!newRoomName.trim()) return;
 
-        // For pure frontend demo:
-        const newRoomId = uuidv4();
-        // Ideally we would add to 'rooms' state here if staying on dashboard, but we navigate away
-        navigate(`/editor/${newRoomId}`);
+        const newRoom = await createDocument(newRoomName);
+        console.log("Created room:", newRoom);
+        // Navigate using the ID (which might be 6-char now)
+        navigate(`/editor/${newRoom.id}`);
         setShowModal(false);
+    };
+
+    const handleJoinRoom = (e) => {
+        e.preventDefault();
+        if (joinCode.trim()) {
+            navigate(`/editor/${joinCode.trim()}`);
+            setJoinCode('');
+        }
     };
 
     return (
@@ -62,19 +68,32 @@ export default function Dashboard() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <h3 style={{ margin: 0 }}>Your Projects</h3>
-                <button className="primary" onClick={handleCreateRoom}>+ New Project</button>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <form onSubmit={handleJoinRoom} style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                            type="text"
+                            placeholder="Enter Code (e.g. X9Y2Z1)"
+                            value={joinCode}
+                            onChange={(e) => setJoinCode(e.target.value)}
+                            style={{ padding: '0.4rem 0.8rem', width: '180px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '4px' }}
+                        />
+                        <button type="submit" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>Join</button>
+                    </form>
+                    <button className="primary" onClick={handleCreateRoom}>+ New Project</button>
+                </div>
             </div>
 
             <div className="dashboard-grid">
+                {rooms.length === 0 && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '2rem', opacity: 0.7 }}>No projects found. Create one to get started!</div>}
                 {rooms.map((room, index) => (
                     <div
-                        key={room.id}
+                        key={room.id || room._id}
                         className="room-card glass-card"
-                        onClick={() => navigate(`/editor/${room.id}`)}
+                        onClick={() => navigate(`/editor/${room.id || room._id}`)}
                         style={{ animationDelay: `${index * 0.1}s` }}
                     >
                         <h3 style={{ fontSize: '1.25rem' }}>{room.name}</h3>
-                        <p style={{ fontSize: '0.875rem', opacity: 0.7 }}>ID: {room.id}</p>
+                        <p style={{ fontSize: '0.875rem', opacity: 0.7 }}>Code: <span style={{ fontFamily: 'monospace', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{room.id || room._id}</span></p>
                         <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                             <span style={{ fontSize: '0.8rem', color: 'var(--primary-color)' }}>Open &rarr;</span>
                         </div>

@@ -55,7 +55,7 @@ export default function FileExplorer({ files, activeFile, onFileSelect, onFileCr
                             type="text"
                             value={newFileName}
                             onChange={(e) => setNewFileName(e.target.value)}
-                            onBlur={() => setIsCreating(false)}
+                            // onBlur={() => setIsCreating(false)} // Intentionally removed to facilitate easier testing
                             placeholder="filename.js"
                             style={{
                                 width: '100%',

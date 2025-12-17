@@ -3,6 +3,18 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
+export async function getDocuments() {
+    try {
+        const response = await fetch(`${API_BASE}/documents`);
+        if (!response.ok) throw new Error('Failed to fetch documents');
+        return await response.json();
+    } catch (error) {
+        console.warn("API Error (Backend might be down):", error);
+        // Return empty list if backend down
+        return [];
+    }
+}
+
 export async function getDocument(roomId) {
     try {
         const response = await fetch(`${API_BASE}/documents/${roomId}`);
