@@ -3,9 +3,10 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
-export async function getDocuments() {
+export async function getDocuments(owner) {
     try {
-        const response = await fetch(`${API_BASE}/documents`);
+        const query = owner ? `?owner=${owner}` : '';
+        const response = await fetch(`${API_BASE}/documents${query}`);
         if (!response.ok) throw new Error('Failed to fetch documents');
         return await response.json();
     } catch (error) {
@@ -27,18 +28,18 @@ export async function getDocument(roomId) {
     }
 }
 
-export async function createDocument(name) {
+export async function createDocument(name, owner) {
     try {
         const response = await fetch(`${API_BASE}/documents`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
+            body: JSON.stringify({ name, owner })
         });
         if (!response.ok) throw new Error('Failed to create document');
         return await response.json();
     } catch (error) {
         console.warn("API Error:", error);
         // Mock ID
-        return { id: `room-${Date.now()}`, name };
+        return { id: `room-${Date.now()}`, name, owner };
     }
 }

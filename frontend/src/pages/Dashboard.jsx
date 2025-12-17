@@ -14,8 +14,8 @@ export default function Dashboard() {
         if (!username) {
             navigate('/');
         } else {
-            // Fetch real rooms
-            getDocuments().then(data => {
+            // Fetch real rooms filtered by owner
+            getDocuments(username).then(data => {
                 setRooms(data);
             });
         }
@@ -32,7 +32,7 @@ export default function Dashboard() {
         e.preventDefault();
         if (!newRoomName.trim()) return;
 
-        const newRoom = await createDocument(newRoomName);
+        const newRoom = await createDocument(newRoomName, username);
         console.log("Created room:", newRoom);
         // Navigate using the ID (which might be 6-char now)
         navigate(`/editor/${newRoom.id}`);
@@ -67,7 +67,7 @@ export default function Dashboard() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                <h3 style={{ margin: 0 }}>Your Projects</h3>
+                <h3 style={{ margin: 0 }}>My Projects</h3>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <form onSubmit={handleJoinRoom} style={{ display: 'flex', gap: '0.5rem' }}>
                         <input

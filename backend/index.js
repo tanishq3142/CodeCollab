@@ -39,8 +39,10 @@ const generateRoomId = () => {
 
 // REST API
 app.get('/documents', async (req, res) => {
+    const { owner } = req.query;
     try {
-        const docs = await Document.find({}, 'name _id'); // Return only name and ID
+        const query = owner ? { owner } : {};
+        const docs = await Document.find(query, 'name _id owner');
         res.json(docs);
     } catch (e) {
         console.error(e);
@@ -61,7 +63,7 @@ app.get('/documents/:id', async (req, res) => {
 });
 
 app.post('/documents', async (req, res) => {
-    const { name } = req.body;
+    const { name, owner } = req.body;
     let id = generateRoomId();
 
     // Ensure uniqueness (simple retry)
@@ -72,8 +74,8 @@ app.post('/documents', async (req, res) => {
     }
 
     try {
-        await Document.create({ _id: id, name, content: `// New document: ${name}\n` });
-        res.json({ id, name });
+        await Document.create({ _id: id, name, owner, content: `// New document: ${name}\n` });
+        res.json({ id, name, owner });
     } catch (e) {
         console.error(e);
         res.status(500).send('Server Error');
@@ -126,9 +128,21 @@ app.post('/execute', async (req, res) => {
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    socket.on('join-room', async (roomId) => {
+    const roomUsers = {}; // { roomId: { socketId: { username, color } } }
+
+    socket.on('join-room', async ({ roomId, username }) => {
         socket.join(roomId);
-        console.log(`User ${socket.id} joined room ${roomId}`);
+        console.log(`User ${username} (${socket.id}) joined room ${roomId}`);
+
+        // Assign random color
+        const colors = ['#f87171', '#fbbf24', '#4ade80', '#60a5fa', '#a78bfa', '#f472b6'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+
+        if (!roomUsers[roomId]) roomUsers[roomId] = {};
+        roomUsers[roomId][socket.id] = { username, color, socketId: socket.id };
+
+        // Broadcast active users
+        io.in(roomId).emit('room-users', Object.values(roomUsers[roomId]));
 
         // Send current project state (files) to the new user
         let doc = await Document.findById(roomId);
@@ -141,6 +155,26 @@ io.on('connection', (socket) => {
             });
         }
         socket.emit('project-data', doc.files);
+    });
+
+    socket.on('cursor-move', ({ roomId, position }) => {
+        // Broadcast cursor position to others, including username/color
+        if (roomUsers[roomId] && roomUsers[roomId][socket.id]) {
+            const userInfo = roomUsers[roomId][socket.id];
+            socket.to(roomId).emit('remote-cursor', {
+                socketId: socket.id,
+                position,
+                username: userInfo.username,
+                color: userInfo.color
+            });
+        }
+    });
+
+    socket.on('leaving-room', ({ roomId }) => {
+        if (roomUsers[roomId] && roomUsers[roomId][socket.id]) {
+            delete roomUsers[roomId][socket.id];
+            io.in(roomId).emit('room-users', Object.values(roomUsers[roomId]));
+        }
     });
 
     socket.on('create-file', async ({ roomId, fileName, language }) => {
@@ -203,6 +237,14 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
+        // Remove from all rooms
+        for (const roomId in roomUsers) {
+            if (roomUsers[roomId][socket.id]) {
+                delete roomUsers[roomId][socket.id];
+                // Broadcast updated list
+                io.in(roomId).emit('room-users', Object.values(roomUsers[roomId]));
+            }
+        }
     });
 });
 

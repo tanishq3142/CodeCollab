@@ -15,6 +15,8 @@ export default function EditorPage() {
     const [showTerminal, setShowTerminal] = useState(false);
     const [terminalOutput, setTerminalOutput] = useState('');
     const [isRunning, setIsRunning] = useState(false);
+    const [activeUsers, setActiveUsers] = useState([]);
+    const username = localStorage.getItem('username');
     const fileContents = useRef({}); // Store content in ref to avoid re-renders on typing
 
     // Initialize Socket.IO
@@ -30,12 +32,17 @@ export default function EditorPage() {
         s.on('connect', () => {
             console.log("Connected to socket server");
             setConnected(true);
-            s.emit('join-room', roomId);
+            s.emit('join-room', { roomId, username });
         });
 
         s.on('disconnect', () => {
             console.log("Disconnected");
             setConnected(false);
+        });
+
+        s.on('room-users', (users) => {
+            console.log("Active users:", users);
+            setActiveUsers(users);
         });
 
         s.on('project-data', (filesData) => {
@@ -131,16 +138,31 @@ export default function EditorPage() {
                         {isRunning ? 'Running...' : 'Run Code'}
                     </button>
                 </div>
-                <div>
-                    <span style={{
-                        display: 'inline-block',
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: connected ? '#4caf50' : '#f44336',
-                        marginRight: '0.5rem'
-                    }}></span>
-                    {connected ? 'Connected' : 'Disconnected'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {/* Active Users List */}
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        {activeUsers.map((u, i) => (
+                            <div key={i} title={u.username} style={{
+                                width: '32px', height: '32px', borderRadius: '50%',
+                                background: u.color, color: '#fff',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontWeight: 'bold', fontSize: '14px', border: '2px solid #1e293b'
+                            }}>
+                                {u.username ? u.username[0].toUpperCase() : '?'}
+                            </div>
+                        ))}
+                    </div>
+                    <div>
+                        <span style={{
+                            display: 'inline-block',
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            backgroundColor: connected ? '#4caf50' : '#f44336',
+                            marginRight: '0.5rem'
+                        }}></span>
+                        {connected ? 'Connected' : 'Disconnected'}
+                    </div>
                 </div>
             </header>
 
@@ -171,6 +193,7 @@ export default function EditorPage() {
                                 fileName={activeFileName}
                                 initialContent={fileContents.current[activeFileName] || ''}
                                 onContentChange={handleContentUpdate}
+                                activeUsers={activeUsers}
                             />
                         ) : (
                             <div style={{ padding: '20px', color: '#666' }}>Select a file to start editing</div>
