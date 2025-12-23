@@ -8,6 +8,7 @@ import Document from './Document.js';
 import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import archiver from 'archiver';
 
 dotenv.config();
 connectDB();
@@ -124,6 +125,36 @@ app.post('/execute', async (req, res) => {
     });
 });
 
+
+app.get('/documents/:id/download', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const doc = await Document.findById(id);
+        if (!doc) return res.status(404).send('Document not found');
+
+        const archive = archiver('zip', {
+            zlib: { level: 9 } // Sets the compression level.
+        });
+
+        res.attachment(`${doc.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.zip`);
+
+        archive.on('error', function (err) {
+            res.status(500).send({ error: err.message });
+        });
+
+        archive.pipe(res);
+
+        doc.files.forEach(file => {
+            archive.append(file.content, { name: file.name });
+        });
+
+        archive.finalize();
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Server Error');
+    }
+});
+
 // Socket.IO
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -229,6 +260,14 @@ io.on('connection', (socket) => {
             } catch (e) {
                 console.error("Error applying op:", e);
             }
+        });
+    });
+
+    socket.on('chat-message', ({ roomId, message, username }) => {
+        io.in(roomId).emit('chat-message', {
+            username,
+            message,
+            timestamp: new Date().toISOString()
         });
     });
 

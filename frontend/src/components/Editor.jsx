@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { EditorState, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, Decoration, WidgetType } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
@@ -66,7 +66,7 @@ const cursorStateField = StateField.define({
     provide: f => EditorView.decorations.from(f)
 });
 
-export default function Editor({ socket, roomId, fileName, initialContent, onContentChange, activeUsers }) {
+function Editor({ socket, roomId, fileName, initialContent, onContentChange, activeUsers }) {
     const editorRef = useRef(null);
     const viewRef = useRef(null);
     const remoteCursors = useRef(new Map()); // socketId -> { pos, color, username }
@@ -164,3 +164,5 @@ export default function Editor({ socket, roomId, fileName, initialContent, onCon
 
     return <div ref={editorRef} className="cm-editor-wrapper" style={{ height: '100%' }} />;
 }
+
+export default React.memo(Editor);

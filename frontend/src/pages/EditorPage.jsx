@@ -4,6 +4,7 @@ import io from 'socket.io-client';
 import Editor from '../components/Editor';
 import FileExplorer from '../components/FileExplorer';
 import Terminal from '../components/Terminal';
+import Chat from '../components/Chat';
 
 export default function EditorPage() {
     const { roomId } = useParams();
@@ -16,6 +17,7 @@ export default function EditorPage() {
     const [terminalOutput, setTerminalOutput] = useState('');
     const [isRunning, setIsRunning] = useState(false);
     const [activeUsers, setActiveUsers] = useState([]);
+    const [showChat, setShowChat] = useState(true);
     const username = localStorage.getItem('username');
     const fileContents = useRef({}); // Store content in ref to avoid re-renders on typing
 
@@ -81,9 +83,9 @@ export default function EditorPage() {
         };
     }, [roomId]);
 
-    const handleFileCreate = (fileName) => {
+    const handleFileCreate = (fileName, language) => {
         if (socket) {
-            socket.emit('create-file', { roomId, fileName, language: 'javascript' });
+            socket.emit('create-file', { roomId, fileName, language });
         }
     };
 
@@ -119,6 +121,11 @@ export default function EditorPage() {
         }
     };
 
+    const downloadProject = () => {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+        window.open(`${apiUrl}/documents/${roomId}/download`, '_blank');
+    };
+
     const activeFile = files.find(f => f.name === activeFileName);
 
     if (!socket) return <div className="container">Initializing...</div>;
@@ -137,8 +144,28 @@ export default function EditorPage() {
                     >
                         {isRunning ? 'Running...' : 'Run Code'}
                     </button>
+                    <button
+                        onClick={downloadProject}
+                        style={{ padding: '0.4rem 1rem', fontSize: '0.9rem', backgroundColor: '#333' }}
+                    >
+                        Download
+                    </button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <button
+                        onClick={() => setShowChat(!showChat)}
+                        style={{
+                            background: showChat ? '#0e639c' : '#333',
+                            border: 'none',
+                            padding: '4px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                        }}
+                        title="Toggle Chat"
+                    >
+                        Chat
+                    </button>
                     {/* Active Users List */}
                     <div style={{ display: 'flex', gap: '4px' }}>
                         {activeUsers.map((u, i) => (
@@ -188,6 +215,7 @@ export default function EditorPage() {
                     <div className="editor-container" style={{ flex: 1, overflow: 'hidden', position: 'relative', height: 'auto', borderRadius: 0, border: 'none' }}>
                         {activeFileName ? (
                             <Editor
+                                key={activeFileName}
                                 socket={socket}
                                 roomId={roomId}
                                 fileName={activeFileName}
@@ -200,6 +228,9 @@ export default function EditorPage() {
                         )}
                     </div>
                 </div>
+                {showChat && (
+                    <Chat socket={socket} roomId={roomId} username={username} />
+                )}
             </div>
             {showTerminal && (
                 <Terminal
