@@ -5,7 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './db.js';
 import Document from './Document.js';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
@@ -24,9 +24,6 @@ const io = new Server(server, {
         methods: ["GET", "POST"]
     }
 });
-
-// MongoDB handles storage now
-
 
 // Helper for 6-char code
 const generateRoomId = () => {
@@ -83,49 +80,6 @@ app.post('/documents', async (req, res) => {
     }
 });
 
-app.post('/execute', async (req, res) => {
-    const { code, language } = req.body;
-    if (!code) return res.status(400).json({ output: "No code provided" });
-
-    const fileExtension = language === 'python' ? 'py' : (language === 'cpp' ? 'cpp' : 'js');
-    const fileName = `temp_script_${Date.now()}.${fileExtension}`;
-    const filePath = path.join(process.cwd(), fileName);
-
-    fs.writeFileSync(filePath, code);
-
-    let command;
-    if (language === 'python') {
-        command = `python "${filePath}"`;
-    } else if (language === 'cpp') {
-        // Compile then run
-        const outPath = filePath.replace('.cpp', '.exe');
-        command = `g++ "${filePath}" -o "${outPath}" && "${outPath}"`;
-    } else {
-        command = `node "${filePath}"`;
-    }
-
-    exec(command, { timeout: 5000 }, (error, stdout, stderr) => {
-        // Cleanup temp file
-        fs.unlink(filePath, () => { });
-        if (language === 'cpp') {
-            fs.unlink(filePath.replace('.cpp', '.exe'), () => { });
-        }
-
-        if (error && error.killed) {
-            return res.json({ output: "Error: Execution timed out" });
-        }
-
-        if (stderr) {
-            // Some tools output to stderr even on success, but usually it's errors
-            // We'll combine them or just output stderr if stdout is empty
-            return res.json({ output: stderr + (stdout ? "\n" + stdout : "") });
-        }
-
-        res.json({ output: stdout });
-    });
-});
-
-
 app.get('/documents/:id/download', async (req, res) => {
     const { id } = req.params;
     try {
@@ -160,6 +114,7 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     const roomUsers = {}; // { roomId: { socketId: { username, color } } }
+    let runningProcess = null; // Store reference to running process for this socket
 
     socket.on('join-room', async ({ roomId, username }) => {
         socket.join(roomId);
@@ -206,22 +161,22 @@ io.on('connection', (socket) => {
             delete roomUsers[roomId][socket.id];
             io.in(roomId).emit('room-users', Object.values(roomUsers[roomId]));
         }
+        if (runningProcess) {
+            runningProcess.kill();
+            runningProcess = null;
+        }
     });
 
     socket.on('create-file', async ({ roomId, fileName, language }) => {
         console.log(`create-file request: ${roomId}, ${fileName}`);
         try {
             const doc = await Document.findById(roomId);
-            console.log(`Document found: ${!!doc}`);
             if (doc) {
                 const newFile = { name: fileName, content: "", language: language || 'plaintext' };
                 doc.files.push(newFile);
                 await doc.save();
-                console.log("File saved");
                 // Broadcast to all clients in room (including sender) to update list
                 io.in(roomId).emit('file-created', newFile);
-            } else {
-                console.log("Document not found for room:", roomId);
             }
         } catch (e) {
             console.error("Error creating file:", e);
@@ -271,11 +226,95 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Optional: Handle full autosave if we wanted to be safer, 
-    // but client-op handles the state continuously.
+    // --- Interactive Execution Logic ---
+    socket.on('execute-code', ({ code, language }) => {
+        if (runningProcess) {
+            runningProcess.kill();
+            runningProcess = null;
+        }
+
+        const fileExtension = language === 'python' ? 'py' : (language === 'cpp' ? 'cpp' : 'js');
+        const fileName = `temp_script_${socket.id}_${Date.now()}.${fileExtension}`;
+        const filePath = path.join(process.cwd(), fileName);
+
+        fs.writeFileSync(filePath, code);
+
+        let cmd, args;
+
+        if (language === 'python') {
+            // -u for unbuffered binary stdout/stderr
+            cmd = 'python';
+            args = ['-u', filePath];
+        } else if (language === 'cpp') {
+            // Compile then run (sync compile for simplicity or chained)
+            const outPath = filePath.replace('.cpp', '.exe');
+            try {
+                // Compile synchronously first
+                // TODO: Make compilation async to avoid blocking event loop, but for now strict sequence
+                exec(`g++ "${filePath}" -o "${outPath}"`, (error, stdout, stderr) => {
+                    if (error) {
+                        socket.emit('terminal-output', { data: `Compilation Error:\n${stderr}\n` });
+                        fs.unlink(filePath, () => { });
+                        return;
+                    }
+                    // Run the compiled executable
+                    runningProcess = spawn(outPath, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+                    attachProcessListeners(runningProcess, [filePath, outPath]);
+                });
+                return; // Return early, spawn happens in callback
+            } catch (err) {
+                socket.emit('terminal-output', { data: `Setup Error: ${err.message}\n` });
+                return;
+            }
+        } else {
+            cmd = 'node';
+            args = [filePath];
+        }
+
+        if (language !== 'cpp') {
+            runningProcess = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+            attachProcessListeners(runningProcess, [filePath]);
+        }
+    });
+
+    function attachProcessListeners(process, filesToDelete) {
+        process.stdout.on('data', (data) => {
+            socket.emit('terminal-output', { data: data.toString() });
+        });
+
+        process.stderr.on('data', (data) => {
+            socket.emit('terminal-output', { data: data.toString() });
+        });
+
+        process.on('close', (code) => {
+            socket.emit('terminal-output', { data: `\n[Process exited with code ${code}]\n` });
+            runningProcess = null;
+            // Cleanup
+            filesToDelete.forEach(f => {
+                if (fs.existsSync(f)) fs.unlinkSync(f); // Sync is fine for cleanup here
+            });
+        });
+
+        process.on('error', (err) => {
+            socket.emit('terminal-output', { data: `\n[Error spawning process: ${err.message}]\n` });
+        });
+    }
+
+    socket.on('terminal-input', (inputData) => {
+        if (runningProcess && runningProcess.stdin) {
+            try {
+                runningProcess.stdin.write(inputData + '\n');
+            } catch (err) {
+                console.error("Error writing to stdin:", err);
+            }
+        }
+    });
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
+        if (runningProcess) {
+            runningProcess.kill();
+        }
         // Remove from all rooms
         for (const roomId in roomUsers) {
             if (roomUsers[roomId][socket.id]) {

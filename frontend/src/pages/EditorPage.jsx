@@ -40,6 +40,7 @@ export default function EditorPage() {
         s.on('disconnect', () => {
             console.log("Disconnected");
             setConnected(false);
+            setIsRunning(false);
         });
 
         s.on('room-users', (users) => {
@@ -66,16 +67,18 @@ export default function EditorPage() {
         });
 
         s.on('server-op', ({ fileName, op }) => {
-            // Also update our local ref if we get an external update
-            // Note: This is a simplification. For perfect sync, we'd need to apply the op string-wise.
-            // But since 'Editor' handles the live view, we mainly care about switching files.
-            // If we switch to a file that had remote updates, we want the latest.
-            // Ideally, we should apply the op to fileContents.current[fileName].
-            // Implementing basic op application here:
             const currentContent = fileContents.current[fileName] || "";
             const prefix = currentContent.slice(0, op.from);
             const suffix = currentContent.slice(op.to);
             fileContents.current[fileName] = prefix + op.insert + suffix;
+        });
+
+        // Terminal Output Listener
+        s.on('terminal-output', ({ data }) => {
+            setTerminalOutput(prev => prev + data);
+            if (data.includes("[Process exited")) {
+                setIsRunning(false);
+            }
         });
 
         return () => {
@@ -93,31 +96,24 @@ export default function EditorPage() {
         fileContents.current[fileName] = newContent;
     };
 
-    const runCode = async () => {
-        if (!activeFileName) return;
+    const runCode = () => {
+        if (!activeFileName || !socket) return;
         const code = fileContents.current[activeFileName] || '';
         // Determine language basic
         const language = activeFileName.endsWith('.py') ? 'python' : (activeFileName.endsWith('.cpp') ? 'cpp' : 'javascript');
 
         setShowTerminal(true);
-        setTerminalOutput("Running...");
+        setTerminalOutput(""); // Clear previous output
         setIsRunning(true);
 
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+        socket.emit('execute-code', { code, language });
+    };
 
-        try {
-            const res = await fetch(`${apiUrl}/execute`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code, language })
-            });
-            const data = await res.json();
-            setTerminalOutput(data.output);
-        } catch (err) {
-            console.error(err);
-            setTerminalOutput("Error connecting to execution server.");
-        } finally {
-            setIsRunning(false);
+    const handleTerminalInput = (input) => {
+        if (socket) {
+            // Echo input to terminal for better UX
+            setTerminalOutput(prev => prev + input + '\n');
+            socket.emit('terminal-input', input);
         }
     };
 
@@ -236,6 +232,7 @@ export default function EditorPage() {
                 <Terminal
                     output={terminalOutput}
                     onClose={() => setShowTerminal(false)}
+                    onInput={handleTerminalInput}
                 />
             )}
         </div>

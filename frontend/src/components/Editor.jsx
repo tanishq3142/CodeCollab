@@ -125,7 +125,11 @@ function Editor({ socket, roomId, fileName, initialContent, onContentChange, act
                 oneDark,
                 fileName.endsWith('.cpp') ? cpp() : (fileName.endsWith('.py') ? python() : javascript()),
                 broadcastCursor,
-                cursorStateField
+                cursorStateField,
+                EditorView.theme({
+                    "&": { height: "100%" },
+                    ".cm-scroller": { overflow: "auto" }
+                })
             ]
         });
 

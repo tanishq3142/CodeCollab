@@ -1,13 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
-export default function Terminal({ output, onClose }) {
+export default function Terminal({ output, onClose, onInput }) {
+    const [inputValue, setInputValue] = useState('');
+    const outputRef = useRef(null);
+
+    // Auto-scroll to bottom
+    useEffect(() => {
+        if (outputRef.current) {
+            outputRef.current.scrollTop = outputRef.current.scrollHeight;
+        }
+    }, [output]);
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            if (onInput) {
+                onInput(inputValue);
+            }
+            setInputValue('');
+        }
+    };
+
     return (
         <div style={{
             position: 'absolute',
             bottom: 0,
             left: 0,
             width: '100%',
-            height: '200px',
+            height: '250px',
             backgroundColor: '#1e1e1e',
             color: '#d4d4d4',
             borderTop: '1px solid #333',
@@ -40,16 +59,43 @@ export default function Terminal({ output, onClose }) {
                     &times;
                 </button>
             </div>
-            <pre style={{
-                flex: 1,
-                padding: '10px',
-                margin: 0,
-                overflow: 'auto',
-                whiteSpace: 'pre-wrap',
-                fontSize: '0.9rem'
-            }}>
+            <div
+                ref={outputRef}
+                style={{
+                    flex: 1,
+                    padding: '10px',
+                    margin: 0,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '0.9rem'
+                }}
+            >
                 {output || "Run code to see output..."}
-            </pre>
+            </div>
+            <div style={{
+                display: 'flex',
+                borderTop: '1px solid #333',
+                backgroundColor: '#1e1e1e'
+            }}>
+                <span style={{ padding: '5px 0 5px 10px', color: '#666' }}>&gt;</span>
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    style={{
+                        flex: 1,
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'white',
+                        fontFamily: 'monospace',
+                        fontSize: '0.9rem',
+                        padding: '5px 10px',
+                        outline: 'none'
+                    }}
+                    placeholder="Type here to send to process (stdin)..."
+                />
+            </div>
         </div>
     );
 }
